@@ -1,11 +1,11 @@
 #!/bin/bash -e
 
-# github.com/jawj/IKEv2-setup
-# Copyright (c) 2015 – 2024 George MacKerron
-# Released under the MIT licence: http://opensource.org/licenses/mit-license
+# github.com/Spoon-and-Fork/IKEv2-setup
+# Copyright (c) 2015 – 2024 George MacKerron
+# Released under the MIT licence: http://opensource.org/licenses/mit-license
 
 echo
-echo "=== https://github.com/jawj/IKEv2-setup ==="
+echo "=== https://github.com/Spoon-and-Fork/IKEv2-setup ==="
 echo
 
 
@@ -29,7 +29,7 @@ echo
 
 export DEBIAN_FRONTEND=noninteractive
 
-# see https://github.com/jawj/IKEv2-setup/issues/66 and https://bugs.launchpad.net/subiquity/+bug/1783129
+# see https://github.com/Spoon-and-Fork/IKEv2-setup/issues/66 and https://bugs.launchpad.net/subiquity/+bug/1783129
 # note: software-properties-common is required for add-apt-repository
 apt-get -o Acquire::ForceIPv4=true update
 apt-get -o Acquire::ForceIPv4=true install -y software-properties-common
@@ -51,7 +51,9 @@ echo "Network interface: ${ETH0ORSIMILAR}"
 echo "External IP: ${IP}"
 echo
 echo "** Note: this hostname must already resolve to this machine, to enable Let's Encrypt certificate setup **"
-read -r -p "Hostname for VPN: " VPNHOST
+read -r -p "Hostname for internal domain-naming: " VPNHOST2
+read -r -p "Hostname for VPN (default: vpn.spoons.su): " VPNHOST
+VPNHOST=${VPNHOST:-'vpn.spoons.su'}
 
 VPNHOSTIP=$(dig -4 +short "${VPNHOST}")
 [[ -n "$VPNHOSTIP" ]] || exit_badly "Cannot resolve VPN hostname: aborting"
@@ -99,34 +101,14 @@ echo
 read -r -p "Timezone (default: Europe/London): " TZONE
 TZONE=${TZONE:-'Europe/London'}
 
-read -r -p "Email address for sysadmin (e.g. j.bloggs@example.com): " EMAILADDR
+read -r -p "Email address for sysadmin (default: admin@spoons.su): " EMAILADDR
+EMAILADDR=${EMAILADDR:-'admin@spoons.su'}
 
 read -r -p "Desired SSH log-in port (default: 22): " SSHPORT
 SSHPORT=${SSHPORT:-22}
 
-read -r -p "New SSH log-in user name: " LOGINUSERNAME
-
-CERTLOGIN="n"
-if [[ -s /root/.ssh/authorized_keys ]]; then
-  while true; do
-    read -r -p "Copy /root/.ssh/authorized_keys to new user and disable SSH password log-in [Y/n]? " CERTLOGIN
-    [[ ${CERTLOGIN,,} =~ ^(y(es)?)?$ ]] && CERTLOGIN=y
-    [[ ${CERTLOGIN,,} =~ ^no?$ ]] && CERTLOGIN=n
-    [[ $CERTLOGIN =~ ^(y|n)$ ]] && break
-  done
-fi
-
-while true; do
-  [[ ${CERTLOGIN} = "y" ]] && read -r -s -p "New SSH user's password (e.g. for sudo): " LOGINPASSWORD
-  [[ ${CERTLOGIN} != "y" ]] && read -r -s -p "New SSH user's log-in password (must be REALLY STRONG): " LOGINPASSWORD
-  echo
-  read -r -s -p "Confirm new SSH user's password: " LOGINPASSWORD2
-  echo
-  [[ "${LOGINPASSWORD}" = "${LOGINPASSWORD2}" ]] && break
-  echo "Passwords didn't match -- please try again"
-done
-
-VPNIPPOOL="10.101.0.0/16"
+read -r -p "Desired IP pool (default: 10.101.0.0/16): " VPNIPPOOL
+VPNIPPOOL=${VPNIPPOOL:-'10.101.0.0/16'}
 
 
 echo
@@ -156,33 +138,6 @@ echo
 # https://wiki.strongswan.org/projects/strongswan/wiki/ForwardingAndSplitTunneling
 # https://www.zeitgeist.se/2013/11/26/mtu-woes-in-ipsec-tunnels-how-to-fix/
 
-iptables -P INPUT   ACCEPT
-iptables -P FORWARD ACCEPT
-iptables -P OUTPUT  ACCEPT
-
-iptables -F
-iptables -t nat -F
-iptables -t mangle -F
-
-# INPUT
-
-# accept anything already accepted
-iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-
-# accept anything on the loopback interface
-iptables -A INPUT -i lo -j ACCEPT
-
-# drop invalid packets
-iptables -A INPUT -m state --state INVALID -j DROP
-
-# rate-limit repeated new requests from same IP to any ports
-iptables -I INPUT -i "${ETH0ORSIMILAR}" -m state --state NEW -m recent --set
-iptables -I INPUT -i "${ETH0ORSIMILAR}" -m state --state NEW -m recent --update --seconds 300 --hitcount 60 -j DROP
-
-# accept (non-standard) SSH
-iptables -A INPUT -p tcp --dport "${SSHPORT}" -j ACCEPT
-
-
 # VPN
 
 # accept IPSec/NAT-T for VPN (ESP not needed with forceencaps, as ESP goes inside UDP)
@@ -200,12 +155,6 @@ iptables -t mangle -A FORWARD --match policy --pol ipsec --dir in -s "${VPNIPPOO
 iptables -t nat -A POSTROUTING -s "${VPNIPPOOL}" -o "${ETH0ORSIMILAR}" -m policy --pol ipsec --dir out -j ACCEPT  # exempt IPsec traffic from masquerading
 iptables -t nat -A POSTROUTING -s "${VPNIPPOOL}" -o "${ETH0ORSIMILAR}" -j MASQUERADE
 
-
-# fall through to drop any other input and forward traffic
-
-iptables -A INPUT   -j DROP
-iptables -A FORWARD -j DROP
-
 iptables -L
 
 netfilter-persistent save
@@ -218,7 +167,7 @@ echo
 mkdir -p /etc/letsencrypt
 
 # note: currently we stick to RSA because iOS/macOS may have trouble with ECDSA
-# (see https://github.com/jawj/IKEv2-setup/issues/159) 
+# (see https://github.com/Spoon-and-Fork/IKEv2-setup/issues/159) 
 
 echo "
 standalone = true
@@ -233,16 +182,17 @@ renew-hook = /usr/sbin/ipsec reload && /usr/sbin/ipsec secrets
 " > /etc/letsencrypt/cli.ini
 
 # certbot on older Ubuntu doesn't recognise the --key-type switch, so try without if it errors with
-certbot certonly --key-type rsa -d "${VPNHOST}" || certbot certonly -d "${VPNHOST}"
+certbot certonly --key-type rsa -d "${VPNHOST},${VPNHOST2}" || certbot certonly -d "${VPNHOST},${VPNHOST2}"
 
+cd /etc/letsencrypt/live/${VPNHOST} || cd /etc/letsencrypt/live/${VPNHOST2}
+ln -f -s "cert.pem"    /etc/ipsec.d/certs/cert.pem
+ln -f -s "privkey.pem" /etc/ipsec.d/private/privkey.pem
+ln -f -s "chain.pem"   /etc/ipsec.d/cacerts/chain.pem
 
-ln -f -s "/etc/letsencrypt/live/${VPNHOST}/cert.pem"    /etc/ipsec.d/certs/cert.pem
-ln -f -s "/etc/letsencrypt/live/${VPNHOST}/privkey.pem" /etc/ipsec.d/private/privkey.pem
-ln -f -s "/etc/letsencrypt/live/${VPNHOST}/chain.pem"   /etc/ipsec.d/cacerts/chain.pem
-
-grep -Fq 'jawj/IKEv2-setup' /etc/apparmor.d/local/usr.lib.ipsec.charon || echo "
-# https://github.com/jawj/IKEv2-setup
+grep -Fq 'Spoon-and-Fork/IKEv2-setup' /etc/apparmor.d/local/usr.lib.ipsec.charon || echo "
+# https://github.com/Spoon-and-Fork/IKEv2-setup
 /etc/letsencrypt/archive/${VPNHOST}/* r,
+/etc/letsencrypt/archive/${VPNHOST2}/* r,
 " >> /etc/apparmor.d/local/usr.lib.ipsec.charon
 
 aa-status --enabled && invoke-rc.d apparmor reload
@@ -256,8 +206,8 @@ echo
 # ip_no_pmtu_disc is for UDP fragmentation
 # others are for security
 
-grep -Fq 'jawj/IKEv2-setup' /etc/sysctl.conf || echo "
-# https://github.com/jawj/IKEv2-setup
+grep -Fq 'Spoon-and-Fork/IKEv2-setup' /etc/sysctl.conf || echo "
+# https://github.com/Spoon-and-Fork/IKEv2-setup
 net.ipv4.ip_forward = 1
 net.ipv4.ip_no_pmtu_disc = 1
 net.ipv4.conf.all.rp_filter = 1
@@ -293,7 +243,7 @@ conn roadwarrior
   dpddelay=900s
   rekey=no
   left=%any
-  leftid=@${VPNHOST}
+  leftid=@${VPNHOST},@${VPNHOST2}
   leftcert=cert.pem
   leftsendcert=always
   leftsubnet=0.0.0.0/0
@@ -307,6 +257,7 @@ conn roadwarrior
 " > /etc/ipsec.conf
 
 echo "${VPNHOST} : RSA \"privkey.pem\"
+${VPNHOST2} : RSA \"privkey.pem\"
 ${VPNUSERNAME} : EAP \"${VPNPASSWORD}\"
 " > /etc/ipsec.secrets
 
@@ -319,31 +270,12 @@ echo
 
 # user + SSH
 
-id -u "${LOGINUSERNAME}" &>/dev/null || adduser --disabled-password --gecos "" "${LOGINUSERNAME}"
-echo "${LOGINUSERNAME}:${LOGINPASSWORD}" | chpasswd
-adduser "${LOGINUSERNAME}" sudo
-
 sed -r \
 -e "s/^#?Port 22$/Port ${SSHPORT}/" \
 -e 's/^#?LoginGraceTime (120|2m)$/LoginGraceTime 30/' \
--e 's/^#?PermitRootLogin yes$/PermitRootLogin no/' \
 -e 's/^#?X11Forwarding yes$/X11Forwarding no/' \
 -e 's/^#?UsePAM yes$/UsePAM no/' \
 -i.original /etc/ssh/sshd_config
-
-if [[ $CERTLOGIN = "y" ]]; then
-  mkdir -p "/home/${LOGINUSERNAME}/.ssh"
-  chown "${LOGINUSERNAME}" "/home/${LOGINUSERNAME}/.ssh"
-  chmod 700 "/home/${LOGINUSERNAME}/.ssh"
-
-  cp "/root/.ssh/authorized_keys" "/home/${LOGINUSERNAME}/.ssh/authorized_keys"
-  chown "${LOGINUSERNAME}" "/home/${LOGINUSERNAME}/.ssh/authorized_keys"
-  chmod 600 "/home/${LOGINUSERNAME}/.ssh/authorized_keys"
-
-  sed -r \
-  -e "s/^#?PasswordAuthentication yes$/PasswordAuthentication no/" \
-  -i.allows_pwd /etc/ssh/sshd_config
-fi
 
 service ssh restart
 
@@ -361,10 +293,9 @@ sed -r \
 -e 's/^inet_interfaces =.*$/inet_interfaces = loopback-only/' \
 -i.original /etc/postfix/main.cf
 
-grep -Fq 'jawj/IKEv2-setup' /etc/aliases || echo "
-# https://github.com/jawj/IKEv2-setup
+grep -Fq 'Spoon-and-Fork/IKEv2-setup' /etc/aliases || echo "
+# https://github.com/Spoon-and-Fork/IKEv2-setup
 root: ${EMAILADDR}
-${LOGINUSERNAME}: ${EMAILADDR}
 " >> /etc/aliases
 
 newaliases
@@ -391,7 +322,7 @@ echo
 echo "--- Creating configuration files ---"
 echo
 
-cd "/home/${LOGINUSERNAME}"
+cd "/root"
 
 cat << EOF > vpn-ios.mobileconfig
 <?xml version='1.0' encoding='UTF-8'?>
@@ -622,8 +553,8 @@ delay 5
 do shell script "rm " & tmpfile
 EOF
 
-grep -Fq 'jawj/IKEv2-setup' /etc/mime.types || echo "
-# https://github.com/jawj/IKEv2-setup
+grep -Fq 'Spoon-and-Fork/IKEv2-setup' /etc/mime.types || echo "
+# https://github.com/Spoon-and-Fork/IKEv2-setup
 application/vnd.strongswan.profile sswan
 " >> /etc/mime.types
 
@@ -657,8 +588,8 @@ apt-get install -y libcharon-standard-plugins || true  # 17.04+ only
 
 ln -f -s /etc/ssl/certs/ISRG_Root_X1.pem /etc/ipsec.d/cacerts/
 
-grep -Fq 'jawj/IKEv2-setup' /etc/ipsec.conf || echo "
-# https://github.com/jawj/IKEv2-setup
+grep -Fq 'Spoon-and-Fork/IKEv2-setup' /etc/ipsec.conf || echo "
+# https://github.com/Spoon-and-Fork/IKEv2-setup
 conn ikev2vpn
         ikelifetime=60m
         keylife=20m
@@ -669,7 +600,7 @@ conn ikev2vpn
         esp=aes256gcm16-ecp384!
         leftsourceip=%config
         leftauth=eap-mschapv2
-        eap_identity=\${VPNUSERNAME}
+        eap_identity=VPNUSERNAME_HERE
         right=${VPNHOST}
         rightauth=pubkey
         rightid=@${VPNHOST}
@@ -677,8 +608,8 @@ conn ikev2vpn
         auto=add  # or auto=start to bring up automatically
 " >> /etc/ipsec.conf
 
-grep -Fq 'jawj/IKEv2-setup' /etc/ipsec.secrets || echo "
-# https://github.com/jawj/IKEv2-setup
+grep -Fq 'Spoon-and-Fork/IKEv2-setup' /etc/ipsec.secrets || echo "
+# https://github.com/Spoon-and-Fork/IKEv2-setup
 \${VPNUSERNAME} : EAP \"\${VPNPASSWORD}\"
 " >> /etc/ipsec.secrets
 
@@ -727,7 +658,7 @@ System Preferences will then open. Select the profile listed as 'Downloaded' on 
 You will need Windows 10 Pro or above. Please run the following commands in PowerShell:
 
 \$Response = Invoke-WebRequest -UseBasicParsing -Uri https://valid-isrgrootx1.letsencrypt.org
-# ^ this line fixes a certificate lazy-loading bug: see https://github.com/jawj/IKEv2-setup/issues/126
+# ^ this line fixes a certificate lazy-loading bug: see https://github.com/Spoon-and-Fork/IKEv2-setup/issues/126
 
 Add-VpnConnection -Name "${VPNHOST}" \`
   -ServerAddress "${VPNHOST}" \`
@@ -768,12 +699,12 @@ A bash script to set up strongSwan as a VPN client is attached as vpn-ubuntu-cli
 
 EOF
 
-EMAIL=$USER@$VPNHOST mutt -s "VPN configuration" -a vpn-ios.mobileconfig vpn-mac.applescript vpn-android.sswan vpn-ubuntu-client.sh -- "${EMAILADDR}" < vpn-instructions.txt
+EMAIL=$USER@$VPNHOST2 mutt -s "VPN configuration" -a vpn-ios.mobileconfig vpn-mac.applescript vpn-android.sswan vpn-ubuntu-client.sh -- "${EMAILADDR}" < vpn-instructions.txt
 
 echo
 echo "--- How to connect ---"
 echo
-echo "Connection instructions have been emailed to you, and can also be found in your home directory, /home/${LOGINUSERNAME}"
+echo "Connection instructions have been emailed to you, and can also be found in your home directory, /root"
 
 # necessary for IKEv2?
 # Windows: https://support.microsoft.com/en-us/kb/926179
