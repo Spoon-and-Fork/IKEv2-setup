@@ -122,7 +122,7 @@ debconf-set-selections <<< "postfix postfix/mailname string ${VPNHOST}"
 debconf-set-selections <<< "postfix postfix/main_mailer_type string 'Internet Site'"
 
 apt-get -o Acquire::ForceIPv4=true install -y \
-  language-pack-en iptables-persistent postfix mutt unattended-upgrades certbot uuid-runtime \
+  language-pack-en iptables-persistent postfix mutt unattended-upgrades certbot nginx nfs-server uuid-runtime \
   strongswan libstrongswan-standard-plugins strongswan-libcharon libcharon-extra-plugins
 
 # in 22.04 libcharon-standard-plugins is replaced with libcharon-extauth-plugins
@@ -141,8 +141,8 @@ echo
 # VPN
 
 # accept IPSec/NAT-T for VPN (ESP not needed with forceencaps, as ESP goes inside UDP)
-iptables -A INPUT -p udp --dport  500 -j ACCEPT
-iptables -A INPUT -p udp --dport 4500 -j ACCEPT
+#iptables -A INPUT -p udp --dport  500 -j ACCEPT
+#iptables -A INPUT -p udp --dport 4500 -j ACCEPT
 
 # forward VPN traffic anywhere
 iptables -A FORWARD --match policy --pol ipsec --dir in  --proto esp -s "${VPNIPPOOL}" -j ACCEPT
@@ -159,6 +159,21 @@ iptables -L
 
 netfilter-persistent save
 
+echo
+echo "--- Configuring NFS Server ---"
+echo
+
+echo "/var/www/html	10.13.0.0/16(ro,subtree_check,nohide)" >> /etc/exports
+exportfs -a
+
+echo
+echo "--- Configuring Web Server ---"
+echo
+
+systemctl enable nginx
+systemctl start nginx
+mkdir -p /var/www/html
+mount -t nfs 10.13.1.108:/var/www/html /var/www/html
 
 echo
 echo "--- Configuring RSA certificates ---"
@@ -170,7 +185,8 @@ mkdir -p /etc/letsencrypt
 # (see https://github.com/Spoon-and-Fork/IKEv2-setup/issues/159) 
 
 echo "
-standalone = true
+authenticator = webroot
+webroot-path = /var/www/html
 agree-tos = true
 non-interactive = true
 preferred-challenges = http
