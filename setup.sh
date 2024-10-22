@@ -184,15 +184,13 @@ renew-hook = /usr/sbin/ipsec reload && /usr/sbin/ipsec secrets
 # certbot on older Ubuntu doesn't recognise the --key-type switch, so try without if it errors with
 certbot certonly --key-type rsa -d "${VPNHOST},${VPNHOST2}" || certbot certonly -d "${VPNHOST},${VPNHOST2}"
 
-cd /etc/letsencrypt/live/${VPNHOST} || cd /etc/letsencrypt/live/${VPNHOST2}
-ln -f -s "cert.pem"    /etc/ipsec.d/certs/cert.pem
-ln -f -s "privkey.pem" /etc/ipsec.d/private/privkey.pem
-ln -f -s "chain.pem"   /etc/ipsec.d/cacerts/chain.pem
+ln -f -s "/etc/letsencrypt/live/${VPNHOST}/cert.pem"    /etc/ipsec.d/certs/cert.pem
+ln -f -s "/etc/letsencrypt/live/${VPNHOST}/privkey.pem" /etc/ipsec.d/private/privkey.pem
+ln -f -s "/etc/letsencrypt/live/${VPNHOST}/chain.pem"   /etc/ipsec.d/cacerts/chain.pem
 
 grep -Fq 'Spoon-and-Fork/IKEv2-setup' /etc/apparmor.d/local/usr.lib.ipsec.charon || echo "
 # https://github.com/Spoon-and-Fork/IKEv2-setup
 /etc/letsencrypt/archive/${VPNHOST}/* r,
-/etc/letsencrypt/archive/${VPNHOST2}/* r,
 " >> /etc/apparmor.d/local/usr.lib.ipsec.charon
 
 aa-status --enabled && invoke-rc.d apparmor reload
@@ -243,7 +241,7 @@ conn roadwarrior
   dpddelay=900s
   rekey=no
   left=%any
-  leftid=@${VPNHOST},@${VPNHOST2}
+  leftid=@${VPNHOST}
   leftcert=cert.pem
   leftsendcert=always
   leftsubnet=0.0.0.0/0
@@ -257,7 +255,6 @@ conn roadwarrior
 " > /etc/ipsec.conf
 
 echo "${VPNHOST} : RSA \"privkey.pem\"
-${VPNHOST2} : RSA \"privkey.pem\"
 ${VPNUSERNAME} : EAP \"${VPNPASSWORD}\"
 " > /etc/ipsec.secrets
 
