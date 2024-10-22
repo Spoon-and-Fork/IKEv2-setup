@@ -173,7 +173,7 @@ echo
 systemctl enable nginx
 systemctl start nginx
 mkdir -p /var/www/html
-mount -t nfs 10.13.1.108:/var/www/html /var/www/html
+mount -t nfs "10.13.1.108:/var/www/html" /var/www/html
 
 echo
 echo "--- Configuring RSA certificates ---"
