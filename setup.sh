@@ -1,29 +1,5 @@
 #!/bin/bash -e
 
-# github.com/Spoon-and-Fork/IKEv2-setup
-# Copyright (c) 2015 – 2024 George MacKerron
-# Released under the MIT licence: http://opensource.org/licenses/mit-license
-
-echo
-echo "=== https://github.com/Spoon-and-Fork/IKEv2-setup ==="
-echo
-
-
-function exit_badly {
-  echo "$1"
-  exit 1
-}
-
-UBUNTUVERSION=$(lsb_release -rs)
-[[ "${UBUNTUVERSION}" == "18.04" ]] \
-  || [[ "${UBUNTUVERSION}" == "20.04" ]] \
-  || [[ "${UBUNTUVERSION}" == "22.04" ]] \
-  || [[ "${UBUNTUVERSION}" == "24.04" ]] \
-  || exit_badly "This script is for Ubuntu 18.04/20.04/22.04/24.04 only: aborting (if you know what you're doing, try deleting this check)"
-
-[[ $(id -u) -eq 0 ]] || exit_badly "Please run this script as root (e.g. sudo ./path/to/this/script)"
-
-
 echo "--- Adding repositories and installing utilities ---"
 echo
 
@@ -51,9 +27,9 @@ echo "Network interface: ${ETH0ORSIMILAR}"
 echo "External IP: ${IP}"
 echo
 echo "** Note: this hostname must already resolve to this machine, to enable Let's Encrypt certificate setup **"
-read -r -p "Hostname for internal domain-naming: " VPNHOST2
-read -r -p "Hostname for VPN (default: vpn.spoons.su): " VPNHOST
-VPNHOST=${VPNHOST:-'vpn.spoons.su'}
+echo "Hostname for internal domain-naming: $HOSTNAME"
+echo "Hostname for VPN: sswan.spoons.su"
+VPNHOST=sswan.spoons.su
 
 VPNHOSTIP=$(dig -4 +short "${VPNHOST}")
 [[ -n "$VPNHOSTIP" ]] || exit_badly "Cannot resolve VPN hostname: aborting"
@@ -64,52 +40,23 @@ if [[ "${IP}" != "${VPNHOSTIP}" ]]; then
   read -r -p "Press [Return] to continue anyway, or Ctrl-C to abort"
 fi
 
-read -r -p "VPN username: " VPNUSERNAME
-while true; do
-  read -r -s -p "VPN password (no quotes, please): " VPNPASSWORD
-  echo
-  read -r -s -p "Confirm VPN password: " VPNPASSWORD2
-  echo
-  [[ "${VPNPASSWORD}" = "${VPNPASSWORD2}" ]] && break
-  echo "Passwords didn't match -- please try again"
-done
+VPNUSERNAME=test
+VPNPASSWORD=test
 
-echo '
-Public DNS servers include:
-
-176.103.130.130,176.103.130.131  AdGuard               https://adguard.com/en/adguard-dns/overview.html
-176.103.130.132,176.103.130.134  AdGuard Family        https://adguard.com/en/adguard-dns/overview.html
-1.1.1.1,1.0.0.1                  Cloudflare/APNIC      https://1.1.1.1
-84.200.69.80,84.200.70.40        DNS.WATCH             https://dns.watch
-8.8.8.8,8.8.4.4                  Google                https://developers.google.com/speed/public-dns/
-208.67.222.222,208.67.220.220    OpenDNS               https://www.opendns.com
-208.67.222.123,208.67.220.123    OpenDNS FamilyShield  https://www.opendns.com
-9.9.9.9,149.112.112.112          Quad9                 https://quad9.net
-77.88.8.8,77.88.8.1              Yandex                https://dns.yandex.com
-77.88.8.88,77.88.8.2             Yandex Safe           https://dns.yandex.com
-77.88.8.7,77.88.8.3              Yandex Family         https://dns.yandex.com
-'
-
-read -r -p "DNS servers for VPN users (default: 1.1.1.1,1.0.0.1): " VPNDNS
-VPNDNS=${VPNDNS:-'1.1.1.1,1.0.0.1'}
+echo "DNS servers for VPN users: 1.1.1.1,1.0.0.1"
+VPNDNS='1.1.1.1,1.0.0.1'
 
 
 echo
 echo "--- Configuration: general server settings ---"
 echo
 
-read -r -p "Timezone (default: Europe/London): " TZONE
-TZONE=${TZONE:-'Europe/London'}
+TZONE='Europe/London'
 
-read -r -p "Email address for sysadmin (default: admin@spoons.su): " EMAILADDR
-EMAILADDR=${EMAILADDR:-'admin@spoons.su'}
+EMAILADDR='admin@spoons.su'
 
-read -r -p "Desired SSH log-in port (default: 22): " SSHPORT
-SSHPORT=${SSHPORT:-22}
-
-read -r -p "Desired IP pool (default: 10.101.0.0/16): " VPNIPPOOL
+read -r -p "VPN IP pool (default: 10.101.0.0/16): " VPNIPPOOL
 VPNIPPOOL=${VPNIPPOOL:-'10.101.0.0/16'}
-
 
 echo
 echo "--- Upgrading and installing packages ---"
@@ -160,20 +107,19 @@ iptables -L
 netfilter-persistent save
 
 echo
-echo "--- Configuring NFS Server ---"
+echo "--- Configuring NFS Client ---"
 echo
 
-echo "/var/www/html	10.13.0.0/16(ro,subtree_check,nohide)" >> /etc/exports
-exportfs -a
+echo "ip.spoons.su:/html /var/www/html nfs defaults,hard,noacl,noexec,nosuid,nolock 0 0" >> /etc/fstab
 
 echo
 echo "--- Configuring Web Server ---"
 echo
 
+mkdir -p /var/www/html
+mount -a
 systemctl enable nginx
 systemctl start nginx
-mkdir -p /var/www/html
-mount -t nfs "10.13.1.108:/var/www/html" /var/www/html
 
 echo
 echo "--- Configuring RSA certificates ---"
@@ -198,7 +144,7 @@ renew-hook = /usr/sbin/ipsec reload && /usr/sbin/ipsec secrets
 " > /etc/letsencrypt/cli.ini
 
 # certbot on older Ubuntu doesn't recognise the --key-type switch, so try without if it errors with
-certbot certonly --key-type rsa -d "${VPNHOST},${VPNHOST2}" || certbot certonly -d "${VPNHOST},${VPNHOST2}"
+certbot certonly --key-type rsa -d "${VPNHOST},$HOSTNAME" || certbot certonly -d "${VPNHOST},$HOSTNAME"
 
 ln -f -s "/etc/letsencrypt/live/${VPNHOST}/cert.pem"    /etc/ipsec.d/certs/cert.pem
 ln -f -s "/etc/letsencrypt/live/${VPNHOST}/privkey.pem" /etc/ipsec.d/private/privkey.pem
@@ -278,22 +224,6 @@ ipsec restart
 
 
 echo
-echo "--- User ---"
-echo
-
-# user + SSH
-
-sed -r \
--e "s/^#?Port 22$/Port ${SSHPORT}/" \
--e 's/^#?LoginGraceTime (120|2m)$/LoginGraceTime 30/' \
--e 's/^#?X11Forwarding yes$/X11Forwarding no/' \
--e 's/^#?UsePAM yes$/UsePAM no/' \
--i.original /etc/ssh/sshd_config
-
-service ssh restart
-
-
-echo
 echo "--- Timezone, mail, unattended upgrades ---"
 echo
 
@@ -302,7 +232,7 @@ timedatectl set-timezone "${TZONE}"
 
 
 sed -r \
--e "s/^myhostname =.*$/myhostname = ${VPNHOST}/" \
+-e "s/^myhostname =.*$/myhostname = $HOSTNAME/" \
 -e 's/^inet_interfaces =.*$/inet_interfaces = loopback-only/' \
 -i.original /etc/postfix/main.cf
 
@@ -712,7 +642,7 @@ A bash script to set up strongSwan as a VPN client is attached as vpn-ubuntu-cli
 
 EOF
 
-EMAIL=$USER@$VPNHOST2 mutt -s "VPN configuration" -a vpn-ios.mobileconfig vpn-mac.applescript vpn-android.sswan vpn-ubuntu-client.sh -- "${EMAILADDR}" < vpn-instructions.txt
+EMAIL=$USER@$HOSTNAME mutt -s "VPN configuration" -a vpn-ios.mobileconfig vpn-mac.applescript vpn-android.sswan vpn-ubuntu-client.sh -- "${EMAILADDR}" < vpn-instructions.txt
 
 echo
 echo "--- How to connect ---"
