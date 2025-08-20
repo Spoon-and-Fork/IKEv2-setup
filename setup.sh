@@ -5,7 +5,6 @@ echo
 
 export DEBIAN_FRONTEND=noninteractive
 
-# see https://github.com/Spoon-and-Fork/IKEv2-setup/issues/66 and https://bugs.launchpad.net/subiquity/+bug/1783129
 # note: software-properties-common is required for add-apt-repository
 apt-get -o Acquire::ForceIPv4=true update
 apt-get -o Acquire::ForceIPv4=true install -y software-properties-common
@@ -692,3 +691,4 @@ echo "Connection instructions have been emailed to you, and can also be found in
 # necessary for IKEv2?
 # Windows: https://support.microsoft.com/en-us/kb/926179
 # HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\PolicyAgent += AssumeUDPEncapsulationContextOnSendRule, DWORD = 2
+
