@@ -39,9 +39,6 @@ if [[ "${IP}" != "${VPNHOSTIP}" ]]; then
   read -r -p "Press [Return] to continue anyway, or Ctrl-C to abort"
 fi
 
-VPNUSERNAME=test
-VPNPASSWORD=test
-
 echo "DNS servers for VPN users: 1.1.1.1,1.0.0.1"
 VPNDNS='1.1.1.1,1.0.0.1'
 
@@ -64,11 +61,11 @@ echo
 apt-get -o Acquire::ForceIPv4=true --with-new-pkgs upgrade -y
 apt autoremove -y
 
-debconf-set-selections <<< "postfix postfix/mailname string ${VPNHOST}"
+debconf-set-selections <<< "postfix postfix/mailname string $HOSTNAME"
 debconf-set-selections <<< "postfix postfix/main_mailer_type string 'Internet Site'"
 
 apt-get -o Acquire::ForceIPv4=true install -y \
-  language-pack-en iptables-persistent postfix mutt unattended-upgrades certbot nginx nfs-server uuid-runtime \
+  language-pack-en iptables-persistent postfix mutt unattended-upgrades certbot nginx uuid-runtime \
   strongswan libstrongswan-standard-plugins strongswan-libcharon libcharon-extra-plugins
 
 # in 22.04 libcharon-standard-plugins is replaced with libcharon-extauth-plugins
@@ -691,4 +688,5 @@ echo "Connection instructions have been emailed to you, and can also be found in
 # necessary for IKEv2?
 # Windows: https://support.microsoft.com/en-us/kb/926179
 # HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\PolicyAgent += AssumeUDPEncapsulationContextOnSendRule, DWORD = 2
+
 
