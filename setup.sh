@@ -689,4 +689,3 @@ echo "Connection instructions have been emailed to you, and can also be found in
 # Windows: https://support.microsoft.com/en-us/kb/926179
 # HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\PolicyAgent += AssumeUDPEncapsulationContextOnSendRule, DWORD = 2
 
-
