@@ -35,7 +35,7 @@ VPNHOSTIP=$(dig -4 +short "${VPNHOST}")
 [[ -n "$VPNHOSTIP" ]] || exit_badly "Cannot resolve VPN hostname: aborting"
 
 if [[ "${IP}" != "${VPNHOSTIP}" ]]; then
-  echo "Warning: ${VPNHOST} resolves to ${VPNHOSTIP}, not ${IP}"
+  echo "Warning: $HOSTNAME resolves to ${VPNHOSTIP}, not ${IP}"
   echo "Either you're behind NAT, or something is wrong (e.g. hostname points to wrong IP, CloudFlare proxying shenanigans, ...)"
   read -r -p "Press [Return] to continue anyway, or Ctrl-C to abort"
 fi
@@ -144,7 +144,7 @@ renew-hook = /usr/sbin/ipsec reload && /usr/sbin/ipsec secrets
 " > /etc/letsencrypt/cli.ini
 
 # certbot on older Ubuntu doesn't recognise the --key-type switch, so try without if it errors with
-certbot certonly --key-type rsa -d "${VPNHOST},$HOSTNAME" || certbot certonly -d "${VPNHOST},$HOSTNAME"
+certbot certonly --key-type rsa -d "${VPNHOST}" || certbot certonly -d "${VPNHOST}"
 
 ln -f -s "/etc/letsencrypt/live/${VPNHOST}/cert.pem"    /etc/ipsec.d/certs/cert.pem
 ln -f -s "/etc/letsencrypt/live/${VPNHOST}/privkey.pem" /etc/ipsec.d/private/privkey.pem
@@ -196,8 +196,8 @@ conn roadwarrior
 
   # https://docs.strongswan.org/docs/5.9/config/IKEv2CipherSuites.html#_commercial_national_security_algorithm_suite
   # ... but we also allow aes256gcm16-prfsha256-ecp256, because that's sometimes just what macOS proposes
-  ike=aes256gcm16-prfsha384-ecp384,aes256gcm16-prfsha256-ecp256!
-  esp=aes256gcm16-ecp384!
+  ike=aes256-sha1-modp1024,aes256gcm16-prfsha384-ecp384,aes256gcm16-prfsha256-ecp256!
+  esp=aes256-sha1,aes128-sha256-modp3072,aes256gcm16-sha256,aes256gcm16-ecp384!
 
   dpdaction=clear
   dpddelay=900s
@@ -209,15 +209,55 @@ conn roadwarrior
   leftsubnet=0.0.0.0/0
   right=%any
   rightid=%any
-  rightauth=eap-mschapv2
+  rightauth=eap-radius
   eap_identity=%any
   rightdns=${VPNDNS}
   rightsourceip=${VPNIPPOOL}
   rightsendcert=never
 " > /etc/ipsec.conf
 
+	
+rm /etc/strongswan.conf 
+echo "# strongswan.conf - strongSwan configuration file
+#
+# Refer to the strongswan.conf(5) manpage for details
+#
+# Configuration changes should be made in the included files
+
+charon {
+	load_modular = yes
+	plugins {
+		include strongswan.d/charon/*.conf
+	eap-radius {
+
+            class_group = yes
+            eap_start = no
+            load = yes
+            accounting = yes
+            servers {
+                server-a {
+                    address = ip.spoons.su
+                    auth_port = 1812
+                    acct_port = 1813
+                    secret = "amsterdam"
+                    nas_identifier = "$HOSTNAME"
+                    sockets = 5
+                }
+            }
+            dae {
+                enable = yes
+                listen = 0.0.0.0
+                port = 3800
+                secret = "amsterdam"
+           }
+        }
+    }
+}
+
+include strongswan.d/*.conf" >> /etc/strongswan.conf
+
+
 echo "${VPNHOST} : RSA \"privkey.pem\"
-${VPNUSERNAME} : EAP \"${VPNPASSWORD}\"
 " > /etc/ipsec.secrets
 
 ipsec restart
