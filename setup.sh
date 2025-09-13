@@ -28,7 +28,7 @@ echo
 echo "** Note: this hostname must already resolve to this machine, to enable Let's Encrypt certificate setup **"
 echo "Hostname for internal domain-naming: $HOSTNAME"
 echo "Hostname for VPN: sswan.spoons.su"
-VPNHOST=sswan.spoons.su
+VPNHOST=swan.spoons.su
 
 VPNHOSTIP=$(dig -4 +short "${VPNHOST}")
 [[ -n "$VPNHOSTIP" ]] || exit_badly "Cannot resolve VPN hostname: aborting"
@@ -688,4 +688,5 @@ echo "Connection instructions have been emailed to you, and can also be found in
 # necessary for IKEv2?
 # Windows: https://support.microsoft.com/en-us/kb/926179
 # HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\PolicyAgent += AssumeUDPEncapsulationContextOnSendRule, DWORD = 2
+
 
